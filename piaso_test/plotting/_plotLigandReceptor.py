@@ -61,6 +61,42 @@ def plotLigandReceptorInteraction(
         col_receptor (str): Column name for receptor after splitting.
         vertical_layout (bool): If True, plots are arranged horizontally (rotated 90 degrees).
         color_labels_by_annotation (bool): If True, color ligand-receptor labels by their annotation category.
+    
+    Examples:
+        # Horizontal layout with different colormaps for ligand and receptor
+        plot_interactions_with_specificity(
+            interactions_df=specific_interactions,
+            specificity_df=cosg_scores,
+            cell_type_pairs=['L5 NP@SST-Chrna2', 'L5 PT@SST-Chrna2', 'L5 NP@PV-Gpr149', 'L5 PT@PV-Gpr149'],
+            ligand_receptor_sep='-->',
+            top_n=50,
+            y_max=10,
+            heatmap_cmap='Purples',
+            heatmap_cmap_ligand='Blues',
+            heatmap_cmap_receptor='Reds',
+            shared_legend=True,
+            vertical_layout=False,
+            fig_height_per_pair=6,
+            fig_width=20,
+            color_labels_by_annotation=True
+        )
+        
+        # Vertical layout with different colormaps
+        plot_interactions_with_specificity(
+            interactions_df=specific_interactions_cellchat,
+            specificity_df=cosg_scores,
+            cell_type_pairs=['L5 NP@SST-Chrna2'],
+            ligand_receptor_sep='-->',
+            top_n=50,
+            y_max=10,
+            heatmap_cmap_ligand='Purples',
+            heatmap_cmap_receptor='Reds',
+            shared_legend=True,
+            vertical_layout=True,
+            fig_height_per_pair=10,
+            fig_width=10,
+            color_labels_by_annotation=True
+        )
     """
     n_pairs = len(cell_type_pairs)
     
@@ -409,18 +445,18 @@ def plotLigandReceptorInteraction(
                     cbar_receptor.ax.tick_params(labelsize=8)
                 else:
                     cbar_ax = fig.add_subplot(right_gs[1])
-                    cbar = fig.colorbar(mappable, cax=cbar_ax, orientation='horizontal')
+                    # CHANGE: Use inset_axes to reduce colorbar height for better appearance
+                    cbar_ax_inner = cbar_ax.inset_axes([0.2, 0.3, 0.6, 0.4])  # Reduced height from 1.0 to 0.4
+                    cbar = fig.colorbar(mappable, cax=cbar_ax_inner, orientation='horizontal')
                     # CHANGE: Put label on top
                     cbar.set_label('Specificity Score', size=12, labelpad=5)
                     cbar.ax.xaxis.set_label_position('top')
                     cbar.set_ticks([0, global_vmax])
                     cbar.set_ticklabels([f'0.00', f'{global_vmax:.2f}'])
                     cbar.ax.tick_params(labelsize=10)
+                    cbar_ax.axis('off')  # Hide the container frame
 
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
     
     plt.show()
-
-
-
