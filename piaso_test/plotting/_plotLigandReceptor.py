@@ -64,7 +64,7 @@ def plotLigandReceptorInteraction(
     
     Examples:
         # Horizontal layout with different colormaps for ligand and receptor
-        plot_interactions_with_specificity(
+        plotLigandReceptorInteraction(
             interactions_df=specific_interactions,
             specificity_df=cosg_scores,
             cell_type_pairs=['L5 NP@SST-Chrna2', 'L5 PT@SST-Chrna2', 'L5 NP@PV-Gpr149', 'L5 PT@PV-Gpr149'],
@@ -82,7 +82,7 @@ def plotLigandReceptorInteraction(
         )
         
         # Vertical layout with different colormaps
-        plot_interactions_with_specificity(
+        plotLigandReceptorInteraction(
             interactions_df=specific_interactions_cellchat,
             specificity_df=cosg_scores,
             cell_type_pairs=['L5 NP@SST-Chrna2'],
@@ -390,10 +390,10 @@ def plotLigandReceptorInteraction(
             
             # CHANGE: Manually position "Ligand" and "Receptor" labels with more downward spacing to avoid overlap
             # Move "Ligand" further down to avoid overlap with "0" tick label
-            ax_hm.text(-0.7, 1.5 - 0.8, 'Ligand', rotation=45, va='center', ha='right', fontsize=12, 
+            ax_hm.text(-0.7, 1.5 - 1.0, 'Ligand', rotation=45, va='center', ha='right', fontsize=12, 
                        color='black', clip_on=False)
             # Move "Receptor" even further down to create clear separation
-            ax_hm.text(-0.7, 0.5 - 1.0, 'Receptor', rotation=45, va='center', ha='right', fontsize=12, 
+            ax_hm.text(-0.7, 0.5 - 1.3, 'Receptor', rotation=45, va='center', ha='right', fontsize=12, 
                        color='black', clip_on=False)
             
             ax_hm.set_xticks(np.arange(N))
@@ -502,17 +502,45 @@ def plotLigandReceptorInteraction(
                     cbar.ax.tick_params(labelsize=7)
                     cbar.ax.xaxis.set_label_position('top')
         else:
-            # FIXED: Horizontal layout colorbar positioning
-            right_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=main_gs[0, 1], height_ratios=[2, 1], hspace=0.6)
+            # FIXED: Horizontal layout colorbar positioning with adaptive layout to prevent overlap
+            # CHANGE: Calculate space needed for legend based on number of annotations
+            n_annotations = len(all_annotations)
+            legend_needs_space = n_annotations > 6  # If many annotations, need more space
+            
+            if legend_needs_space:
+                # Use 3 rows: legend, colorbars, extra space
+                right_gs = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=main_gs[0, 1], 
+                                                           height_ratios=[1.5, 0.8, 0.2], hspace=0.4)
+            else:
+                # Standard 2 rows: legend, colorbars
+                right_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=main_gs[0, 1], 
+                                                           height_ratios=[2, 1], hspace=0.6)
+            
             if legend_handles:
                 legend_ax = fig.add_subplot(right_gs[0])
                 fresh_handles = [mpatches.Patch(color=color_palette[label], label=label) for label in all_annotations]
-                legend_ax.legend(handles=fresh_handles, title='Annotation', loc='center left', frameon=False)
+                
+                # CHANGE: Adaptive legend layout based on number of annotations
+                if n_annotations <= 4:
+                    ncol = 1
+                elif n_annotations <= 8:
+                    ncol = 2  
+                else:
+                    ncol = 2  # Force 2 columns even for many items, use smaller font
+                    
+                font_size = 8 if n_annotations > 8 else 10  # Smaller font for many items
+                
+                legend_ax.legend(handles=fresh_handles, title='Annotation', loc='center left', 
+                                frameon=False, ncol=ncol, fontsize=font_size, title_fontsize=font_size+1,
+                                columnspacing=0.5, handletextpad=0.3)
                 legend_ax.axis('off')
+                
             if mappable or (mappable_ligand and mappable_receptor):
+                colorbar_row = 1 if not legend_needs_space else 1  # Same row index for both cases
+                
                 if different_cmaps and mappable_ligand and mappable_receptor:
                     # FIXED: Stack colorbars vertically and put labels on top
-                    cbar_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=right_gs[1], hspace=1.5)
+                    cbar_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=right_gs[colorbar_row], hspace=1.5)
                     
                     # Ligand colorbar
                     cbar_ax_ligand = fig.add_subplot(cbar_gs[0])
@@ -534,7 +562,7 @@ def plotLigandReceptorInteraction(
                     cbar_receptor.set_ticklabels([f'0', f'{global_vmax:.1f}'])
                     cbar_receptor.ax.tick_params(labelsize=8)
                 else:
-                    cbar_ax = fig.add_subplot(right_gs[1])
+                    cbar_ax = fig.add_subplot(right_gs[colorbar_row])
                     # CHANGE: Use inset_axes to reduce colorbar height for better appearance
                     cbar_ax_inner = cbar_ax.inset_axes([0.2, 0.3, 0.6, 0.4])  # Reduced height from 1.0 to 0.4
                     cbar = fig.colorbar(mappable, cax=cbar_ax_inner, orientation='horizontal')
