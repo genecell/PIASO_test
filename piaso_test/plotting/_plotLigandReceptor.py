@@ -97,7 +97,78 @@ def plotLigandReceptorInteraction(
             fig_width=10,
             color_labels_by_annotation=True
         )
+        
+    Raises:
+        ValueError: If required columns are missing from DataFrames or if data is inconsistent.
+        KeyError: If specified cell type pairs are not found in the data.
     """
+    
+    # ERROR HANDLING
+    # Check if DataFrames are empty
+    if interactions_df.empty:
+        raise ValueError("interactions_df is empty")
+    if specificity_df.empty:
+        raise ValueError("specificity_df is empty")
+    
+    # Check required columns in interactions_df
+    required_interaction_cols = [col_interaction_score, col_ligand_receptor_pair, col_cell_type_pair, col_annotation]
+    missing_cols = [col for col in required_interaction_cols if col not in interactions_df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns in interactions_df: {missing_cols}")
+    
+    # Check if cell_type_pairs is valid
+    if not cell_type_pairs or not isinstance(cell_type_pairs, list):
+        raise ValueError("cell_type_pairs must be a non-empty list")
+    
+    # Check if cell type pairs exist in data
+    available_pairs = set(interactions_df[col_cell_type_pair].unique())
+    missing_pairs = [pair for pair in cell_type_pairs if pair not in available_pairs]
+    if missing_pairs:
+        raise KeyError(f"Cell type pairs not found in data: {missing_pairs}. Available pairs: {sorted(available_pairs)}")
+    
+    # Check cell_type_sep format
+    for pair in cell_type_pairs:
+        if cell_type_sep not in pair:
+            raise ValueError(f"Cell type pair '{pair}' does not contain separator '{cell_type_sep}'")
+        parts = pair.split(cell_type_sep)
+        if len(parts) != 2:
+            raise ValueError(f"Cell type pair '{pair}' should have exactly one separator '{cell_type_sep}'")
+    
+    # Check ligand_receptor_sep format in data
+    sample_interactions = interactions_df[col_ligand_receptor_pair].head()
+    invalid_pairs = [pair for pair in sample_interactions if ligand_receptor_sep not in pair]
+    if invalid_pairs:
+        raise ValueError(f"Some ligand-receptor pairs don't contain separator '{ligand_receptor_sep}': {invalid_pairs[:3]}...")
+    
+    # Check numeric parameters
+    if top_n <= 0:
+        raise ValueError("top_n must be positive")
+    if y_max <= 0:
+        raise ValueError("y_max must be positive")
+    if fig_width <= 0 or fig_height_per_pair <= 0:
+        raise ValueError("Figure dimensions must be positive")
+    if heatmap_height_ratio <= 0:
+        raise ValueError("heatmap_height_ratio must be positive")
+    
+    # Check if specificity_df has the required cell types
+    all_cell_types = set()
+    for pair in cell_type_pairs:
+        sender, receiver = pair.split(cell_type_sep)
+        all_cell_types.update([sender, receiver])
+    
+    missing_cell_types = [ct for ct in all_cell_types if ct not in specificity_df.columns]
+    if missing_cell_types:
+        raise KeyError(f"Cell types not found in specificity_df columns: {missing_cell_types}")
+    
+    # Warn if no interactions will be plotted
+    total_valid_interactions = 0
+    for pair in cell_type_pairs:
+        pair_interactions = interactions_df[interactions_df[col_cell_type_pair] == pair]
+        if not pair_interactions.empty:
+            total_valid_interactions += len(pair_interactions)
+    
+    if total_valid_interactions == 0:
+        raise ValueError("No valid interactions found for the specified cell type pairs")
     n_pairs = len(cell_type_pairs)
     
     # Set up colormaps
@@ -275,8 +346,8 @@ def plotLigandReceptorInteraction(
             ax_bar.set_xlabel('')
             ax_bar.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
             
-            # CHANGE: Update title format to "From X to Y"
-            title_text = f'Top {N} Interactions from {sender_cell_type} to {receiver_cell_type}'
+            # CHANGE: Update title format to "From X to Y" only
+            title_text = f'From {sender_cell_type} to {receiver_cell_type}'
             ax_bar.set_title(title_text, fontsize=18, pad=15)
             for patch in ax_bar.patches:
                 if patch.get_height() > y_max:
@@ -362,55 +433,74 @@ def plotLigandReceptorInteraction(
         pass 
     elif shared_legend and (legend_handles or mappable):
         if vertical_layout:
-            bottom_gs = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=main_gs[1, :], 
-                                                         width_ratios=[3, 1], wspace=0.2)
+            # CHANGE: Increase space between annotation and colorbar sections
+            bottom_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=main_gs[1, :], 
+                                                         height_ratios=[1, 1.2], hspace=0.5)
             
-            legend_ax = fig.add_subplot(bottom_gs[0])
-            legend_ax.axis('off')
-            
+            # Top section: Annotation legend
             if all_annotations:
+                legend_ax = fig.add_subplot(bottom_gs[0])
+                legend_ax.axis('off')
+                
                 fresh_handles = [mpatches.Patch(color=color_palette[label], label=label) for label in all_annotations]
+                # Better organize legend based on number of annotations and total width
+                n_annotations = len(all_annotations)
+                total_width = fig_height_per_pair * n_pairs  # Total available width
+                
+                # Calculate optimal columns based on total width and number of annotations
+                if total_width < 15:  # Narrow layout
+                    ncol = min(3, n_annotations)
+                elif total_width < 25:  # Medium layout  
+                    ncol = min(4, n_annotations)
+                else:  # Wide layout
+                    ncol = min(6, n_annotations)
+                
                 legend = legend_ax.legend(handles=fresh_handles, title='Annotation', 
-                                          loc='center', ncol=min(6, len(all_annotations)), 
-                                          frameon=False, fontsize=9, title_fontsize=10)
+                                          loc='center', ncol=ncol, 
+                                          frameon=False, fontsize=8, title_fontsize=9,
+                                          columnspacing=0.8, handletextpad=0.3)
             
+            # Bottom section: Colorbar(s) - moved down and made narrower
             if mappable or mappable_ligand:
+                cbar_ax_container = fig.add_subplot(bottom_gs[1])
+                cbar_ax_container.axis('off')
+                
                 if different_cmaps and mappable_ligand and mappable_receptor:
-                    # FIX: Use inset_axes to reduce the height of the colorbars for a sleeker look.
-                    cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=bottom_gs[1], wspace=0.3)
+                    # Two colorbars side by side - CHANGE: made narrower and moved down
+                    cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=bottom_gs[1], wspace=0.6)
                     
-                    # Ligand colorbar
+                    # Ligand colorbar - CHANGE: narrower width (0.6 instead of 0.8) and moved down
                     cbar_ax_ligand_container = fig.add_subplot(cbar_gs[0])
-                    cax_l = cbar_ax_ligand_container.inset_axes([0, 0.4, 1, 0.2]) # Centered, 20% height
+                    cax_l = cbar_ax_ligand_container.inset_axes([0.2, 0.1, 0.6, 0.3])  # 60% width, moved down
                     cbar_ligand = fig.colorbar(mappable_ligand, cax=cax_l, orientation='horizontal')
-                    cbar_ligand.set_label('Ligand Specificity', size=8, labelpad=2)
+                    cbar_ligand.set_label('Ligand Specificity', size=8, labelpad=5)  # CHANGE: increased labelpad
                     vmax_to_use = global_vmax if global_vmax > 0 else vmax_actual
                     cbar_ligand.set_ticks([0, vmax_to_use])
                     cbar_ligand.set_ticklabels([f'0', f'{vmax_to_use:.1f}'])
                     cbar_ligand.ax.tick_params(labelsize=7)
                     cbar_ligand.ax.xaxis.set_label_position('top')
-                    cbar_ax_ligand_container.axis('off') # Hide container frame
+                    cbar_ax_ligand_container.axis('off')
                     
-                    # Receptor colorbar
+                    # Receptor colorbar - CHANGE: narrower width and moved down
                     cbar_ax_receptor_container = fig.add_subplot(cbar_gs[1])
-                    cax_r = cbar_ax_receptor_container.inset_axes([0, 0.4, 1, 0.2]) # Centered, 20% height
+                    cax_r = cbar_ax_receptor_container.inset_axes([0.2, 0.1, 0.6, 0.3])  # 60% width, moved down
                     cbar_receptor = fig.colorbar(mappable_receptor, cax=cax_r, orientation='horizontal')
-                    cbar_receptor.set_label('Receptor Specificity', size=8, labelpad=2)
+                    cbar_receptor.set_label('Receptor Specificity', size=8, labelpad=5)  # CHANGE: increased labelpad
                     cbar_receptor.set_ticks([0, vmax_to_use])
                     cbar_receptor.set_ticklabels([f'0', f'{vmax_to_use:.1f}'])
                     cbar_receptor.ax.tick_params(labelsize=7)
                     cbar_receptor.ax.xaxis.set_label_position('top')
-                    cbar_ax_receptor_container.axis('off') # Hide container frame
+                    cbar_ax_receptor_container.axis('off')
                 else:
-                    cbar_ax = fig.add_subplot(bottom_gs[1])
-                    cbar_ax_inner = cbar_ax.inset_axes([0.2, 0.4, 0.6, 0.2])
+                    # Single colorbar - CHANGE: narrower and centered, moved down
+                    cbar_ax_inner = cbar_ax_container.inset_axes([0.3, 0.1, 0.4, 0.3])  # 40% width instead of 50%, moved down
                     cbar = fig.colorbar(mappable if mappable else mappable_ligand, cax=cbar_ax_inner, orientation='horizontal')
-                    cbar.set_label('Specificity Score', size=10)
+                    cbar.set_label('Specificity Score', size=9, labelpad=5)  # CHANGE: increased labelpad
                     vmax_to_use = global_vmax if global_vmax > 0 else vmax_actual
                     cbar.set_ticks([0, vmax_to_use])
                     cbar.set_ticklabels([f'0.00', f'{vmax_to_use:.2f}'])
-                    cbar.ax.tick_params(labelsize=8)
-                    cbar_ax.axis('off')
+                    cbar.ax.tick_params(labelsize=7)
+                    cbar.ax.xaxis.set_label_position('top')
         else:
             # FIXED: Horizontal layout colorbar positioning
             right_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=main_gs[0, 1], height_ratios=[2, 1], hspace=0.6)
