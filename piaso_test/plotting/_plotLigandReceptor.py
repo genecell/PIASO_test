@@ -5,14 +5,6 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as mpatches
 
-### plotting the ligand receptor interaction patterns
-import pandas as pd
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import matplotlib.patches as mpatches
-
 def plotLigandReceptorInteraction(
     interactions_df: pd.DataFrame,
     specificity_df: pd.DataFrame,
@@ -473,74 +465,96 @@ def plotLigandReceptorInteraction(
         pass 
     elif shared_legend and (legend_handles or mappable):
         if vertical_layout:
-            # CHANGE: Increase space between annotation and colorbar sections
-            bottom_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=main_gs[1, :], 
-                                                         height_ratios=[1, 1.2], hspace=0.5)
+            # CHANGE: Use left-right layout instead of top-bottom to prevent overlap
+            # Left: heatmap colorbars, Right: annotation legend
+            # CHANGE: Reduce right section ratio from 2 to 1.5 for better balance
+            bottom_gs = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=main_gs[1, :], 
+                                                         width_ratios=[1, 1.5], wspace=0.3)
             
-            # Top section: Annotation legend
-            if all_annotations:
-                legend_ax = fig.add_subplot(bottom_gs[0])
-                legend_ax.axis('off')
-                
-                fresh_handles = [mpatches.Patch(color=color_palette[label], label=label) for label in all_annotations]
-                # Better organize legend based on number of annotations and total width
-                n_annotations = len(all_annotations)
-                total_width = fig_height_per_pair * n_pairs  # Total available width
-                
-                # Calculate optimal columns based on total width and number of annotations
-                if total_width < 15:  # Narrow layout
-                    ncol = min(3, n_annotations)
-                elif total_width < 25:  # Medium layout  
-                    ncol = min(4, n_annotations)
-                else:  # Wide layout
-                    ncol = min(6, n_annotations)
-                
-                legend = legend_ax.legend(handles=fresh_handles, title='Annotation', 
-                                          loc='center', ncol=ncol, 
-                                          frameon=False, fontsize=8, title_fontsize=9,
-                                          columnspacing=0.8, handletextpad=0.3)
-            
-            # Bottom section: Colorbar(s) - moved down and made narrower
+            # Left section: Heatmap colorbars (stacked vertically if needed)
             if mappable or mappable_ligand:
-                cbar_ax_container = fig.add_subplot(bottom_gs[1])
+                cbar_ax_container = fig.add_subplot(bottom_gs[0])
                 cbar_ax_container.axis('off')
                 
                 if different_cmaps and mappable_ligand and mappable_receptor:
-                    # Two colorbars side by side - CHANGE: made narrower and moved down
-                    cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=bottom_gs[1], wspace=0.6)
+                    # CHANGE: Further increase spacing between colorbars
+                    cbar_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=bottom_gs[0], hspace=1.2)
                     
-                    # Ligand colorbar - CHANGE: narrower width (0.6 instead of 0.8) and moved down
+                    # Calculate appropriate colorbar width based on number of cell type pairs
+                    # Limit width to prevent them from becoming too wide with multiple pairs
+                    max_cbar_width = min(0.8, max(0.4, 1.0 / n_pairs))  # Width decreases with more pairs
+                    cbar_x_start = (1.0 - max_cbar_width) / 2  # Center the colorbar
+                    
+                    # Ligand colorbar (top)
                     cbar_ax_ligand_container = fig.add_subplot(cbar_gs[0])
-                    cax_l = cbar_ax_ligand_container.inset_axes([0.2, 0.1, 0.6, 0.3])  # 60% width, moved down
+                    cax_l = cbar_ax_ligand_container.inset_axes([cbar_x_start, 0.3, max_cbar_width, 0.4])
                     cbar_ligand = fig.colorbar(mappable_ligand, cax=cax_l, orientation='horizontal')
-                    cbar_ligand.set_label('Ligand Specificity', size=8, labelpad=5)  # CHANGE: increased labelpad
+                    cbar_ligand.set_label('Ligand Specificity', size=9, labelpad=4)
                     vmax_to_use = global_vmax if global_vmax > 0 else vmax_actual
                     cbar_ligand.set_ticks([0, vmax_to_use])
                     cbar_ligand.set_ticklabels([f'0', f'{vmax_to_use:.1f}'])
-                    cbar_ligand.ax.tick_params(labelsize=7)
+                    cbar_ligand.ax.tick_params(labelsize=8)
                     cbar_ligand.ax.xaxis.set_label_position('top')
                     cbar_ax_ligand_container.axis('off')
                     
-                    # Receptor colorbar - CHANGE: narrower width and moved down
+                    # Receptor colorbar (bottom)
                     cbar_ax_receptor_container = fig.add_subplot(cbar_gs[1])
-                    cax_r = cbar_ax_receptor_container.inset_axes([0.2, 0.1, 0.6, 0.3])  # 60% width, moved down
+                    cax_r = cbar_ax_receptor_container.inset_axes([cbar_x_start, 0.3, max_cbar_width, 0.4])
                     cbar_receptor = fig.colorbar(mappable_receptor, cax=cax_r, orientation='horizontal')
-                    cbar_receptor.set_label('Receptor Specificity', size=8, labelpad=5)  # CHANGE: increased labelpad
+                    cbar_receptor.set_label('Receptor Specificity', size=9, labelpad=4)
                     cbar_receptor.set_ticks([0, vmax_to_use])
                     cbar_receptor.set_ticklabels([f'0', f'{vmax_to_use:.1f}'])
-                    cbar_receptor.ax.tick_params(labelsize=7)
+                    cbar_receptor.ax.tick_params(labelsize=8)
                     cbar_receptor.ax.xaxis.set_label_position('top')
                     cbar_ax_receptor_container.axis('off')
                 else:
-                    # Single colorbar - CHANGE: narrower and centered, moved down
-                    cbar_ax_inner = cbar_ax_container.inset_axes([0.3, 0.1, 0.4, 0.3])  # 40% width instead of 50%, moved down
+                    # Single colorbar (centered vertically) - limit width here too
+                    max_cbar_width = min(0.8, max(0.4, 1.2 / n_pairs))  # Slightly wider for single colorbar
+                    cbar_x_start = (1.0 - max_cbar_width) / 2
+                    
+                    cbar_ax_inner = cbar_ax_container.inset_axes([cbar_x_start, 0.4, max_cbar_width, 0.2])
                     cbar = fig.colorbar(mappable if mappable else mappable_ligand, cax=cbar_ax_inner, orientation='horizontal')
-                    cbar.set_label('Specificity Score', size=9, labelpad=5)  # CHANGE: increased labelpad
+                    cbar.set_label('Specificity Score', size=10, labelpad=4)
                     vmax_to_use = global_vmax if global_vmax > 0 else vmax_actual
                     cbar.set_ticks([0, vmax_to_use])
                     cbar.set_ticklabels([f'0.00', f'{vmax_to_use:.2f}'])
-                    cbar.ax.tick_params(labelsize=7)
+                    cbar.ax.tick_params(labelsize=8)
                     cbar.ax.xaxis.set_label_position('top')
+            
+            # Right section: Annotation legend (gets more space)
+            if all_annotations:
+                legend_ax = fig.add_subplot(bottom_gs[1])
+                legend_ax.axis('off')
+                
+                fresh_handles = [mpatches.Patch(color=color_palette[label], label=label) for label in all_annotations]
+                n_annotations = len(all_annotations)
+                total_width = fig_height_per_pair * n_pairs  # Total available width
+                
+                # Increase font sizes to match heatmap legend font sizes
+                if n_annotations <= 3:
+                    ncol = 1
+                    font_size = 10
+                    title_font_size = 11
+                elif n_annotations <= 6:
+                    ncol = 2
+                    font_size = 9
+                    title_font_size = 10
+                elif n_annotations <= 12:
+                    ncol = 3
+                    font_size = 8
+                    title_font_size = 9
+                else:
+                    ncol = 4
+                    font_size = 7
+                    title_font_size = 8
+                
+                # Position legend on the left side of the right section
+                legend = legend_ax.legend(handles=fresh_handles, title='Annotation', 
+                                          loc='center left', ncol=ncol, 
+                                          frameon=False, fontsize=font_size, title_fontsize=title_font_size,
+                                          columnspacing=0.6, handletextpad=0.3)
+                # Fix title alignment
+                legend.get_title().set_horizontalalignment('left')
         else:
             # FIXED: Horizontal layout colorbar positioning with adaptive layout to prevent overlap
             # CHANGE: Calculate space needed for legend based on number of annotations
