@@ -6,6 +6,13 @@ import matplotlib.gridspec as gridspec
 import matplotlib.patches as mpatches
 
 ### plotting the ligand receptor interaction patterns
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.patches as mpatches
+
 def plotLigandReceptorInteraction(
     interactions_df: pd.DataFrame,
     specificity_df: pd.DataFrame,
@@ -30,7 +37,8 @@ def plotLigandReceptorInteraction(
     col_ligand: str = 'ligand',
     col_receptor: str = 'receptor',
     vertical_layout: bool = False,
-    color_labels_by_annotation: bool = False
+    color_labels_by_annotation: bool = False,
+    barplot_palette: str = 'Paired'
 ):
     """
     Generates plots with a bar plot of top interactions and a heatmap showing 
@@ -61,6 +69,8 @@ def plotLigandReceptorInteraction(
         col_receptor (str): Column name for receptor after splitting.
         vertical_layout (bool): If True, plots are arranged horizontally (rotated 90 degrees).
         color_labels_by_annotation (bool): If True, color ligand-receptor labels by their annotation category.
+        barplot_palette (str or list): Color palette for bar plots. Can be a seaborn palette name (e.g., 'Paired', 'Set1') 
+                                      or a list of hex colors (e.g., ['#F198CC', '#D6DAB9', '#BC938B']).
     
     Examples:
         # Horizontal layout with different colormaps for ligand and receptor
@@ -78,10 +88,11 @@ def plotLigandReceptorInteraction(
             vertical_layout=False,
             fig_height_per_pair=6,
             fig_width=20,
-            color_labels_by_annotation=True
+            color_labels_by_annotation=True,
+            barplot_palette='Set1'
         )
         
-        # Vertical layout with different colormaps
+        # Vertical layout with custom hex colors
         plotLigandReceptorInteraction(
             interactions_df=specific_interactions_cellchat,
             specificity_df=cosg_scores,
@@ -95,7 +106,8 @@ def plotLigandReceptorInteraction(
             vertical_layout=True,
             fig_height_per_pair=10,
             fig_width=10,
-            color_labels_by_annotation=True
+            color_labels_by_annotation=True,
+            barplot_palette=['#F198CC', '#D6DAB9', '#BC938B', '#93DCFC', '#F4DBCD', '#bcf60c']
         )
         
     Raises:
@@ -160,6 +172,15 @@ def plotLigandReceptorInteraction(
     if missing_cell_types:
         raise KeyError(f"Cell types not found in specificity_df columns: {missing_cell_types}")
     
+    # Check if barplot_palette is valid
+    if isinstance(barplot_palette, list):
+        # Check if it's a list of valid hex colors
+        for i, color in enumerate(barplot_palette):
+            if not isinstance(color, str) or not color.startswith('#') or len(color) != 7:
+                raise ValueError(f"Invalid hex color at index {i}: '{color}'. Expected format: '#RRGGBB'")
+    elif not isinstance(barplot_palette, str):
+        raise ValueError("barplot_palette must be either a string (seaborn palette name) or a list of hex colors")
+    
     # Warn if no interactions will be plotted
     total_valid_interactions = 0
     for pair in cell_type_pairs:
@@ -188,7 +209,26 @@ def plotLigandReceptorInteraction(
         main_gs = gridspec.GridSpec(n_pairs, 2, figure=fig, hspace=0.8, width_ratios=[15, 3])
 
     all_annotations = sorted(list(interactions_df[col_annotation].unique()))
-    color_palette = dict(zip(all_annotations, sns.color_palette('Paired', len(all_annotations))))
+    
+    # CHANGE: Set up color palette based on barplot_palette parameter
+    if isinstance(barplot_palette, list):
+        # Custom hex colors provided
+        if len(barplot_palette) < len(all_annotations):
+            # Extend the palette by repeating colors if not enough provided
+            extended_palette = (barplot_palette * ((len(all_annotations) // len(barplot_palette)) + 1))[:len(all_annotations)]
+            color_palette = dict(zip(all_annotations, extended_palette))
+        else:
+            color_palette = dict(zip(all_annotations, barplot_palette[:len(all_annotations)]))
+    else:
+        # Seaborn palette name provided
+        try:
+            palette_colors = sns.color_palette(barplot_palette, len(all_annotations))
+            color_palette = dict(zip(all_annotations, palette_colors))
+        except ValueError:
+            # Fallback to 'Paired' if invalid palette name
+            print(f"Warning: Invalid palette '{barplot_palette}', using 'Paired' instead")
+            palette_colors = sns.color_palette('Paired', len(all_annotations))
+            color_palette = dict(zip(all_annotations, palette_colors))
     
     global_vmax = float('-inf')
     if shared_legend and heatmap_vmax is None:
