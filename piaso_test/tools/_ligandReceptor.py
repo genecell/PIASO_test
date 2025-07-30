@@ -249,6 +249,10 @@ def inferLigandReceptorInteraction(
         p_values = group_df['p_value']
         if p_values.empty or p_values.isnull().all():
             continue
+            
+            
+        # Round p-values to 6 decimal places to improve stability of FDR calculation
+        p_values = p_values.round(6)
 
         if prefilter_fdr:
             # Create a mask for interactions that pass the threshold

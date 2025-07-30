@@ -30,7 +30,9 @@ def plotLigandReceptorInteraction(
     col_receptor: str = 'receptor',
     vertical_layout: bool = False,
     color_labels_by_annotation: bool = False,
-    barplot_palette: str = 'Paired'
+    barplot_palette: str = 'Paired',
+    sort_by_category: bool = False,
+    category_agg_method: str = 'sum'
 ):
     """
     Generates plots with a bar plot of top interactions and a heatmap showing 
@@ -63,25 +65,25 @@ def plotLigandReceptorInteraction(
         color_labels_by_annotation (bool): If True, color ligand-receptor labels by their annotation category.
         barplot_palette (str or list): Color palette for bar plots. Can be a seaborn palette name (e.g., 'Paired', 'Set1') 
                                       or a list of hex colors (e.g., ['#F198CC', '#D6DAB9', '#BC938B']).
+        sort_by_category (bool): If True, sort interactions by category first, then by interaction score within category.
+        category_agg_method (str): Method to aggregate interaction scores by category ('sum' or 'mean') when sort_by_category=True.
     
     Examples:
-        # Horizontal layout with different colormaps for ligand and receptor
+        # Horizontal layout with category sorting
         plotLigandReceptorInteraction(
             interactions_df=specific_interactions,
             specificity_df=cosg_scores,
-            cell_type_pairs=['L5 NP@SST-Chrna2', 'L5 PT@SST-Chrna2', 'L5 NP@PV-Gpr149', 'L5 PT@PV-Gpr149'],
+            cell_type_pairs=['L5 NP@SST-Chrna2', 'L5 PT@SST-Chrna2'],
             ligand_receptor_sep='-->',
             top_n=50,
             y_max=10,
-            heatmap_cmap='Purples',
             heatmap_cmap_ligand='Blues',
             heatmap_cmap_receptor='Reds',
             shared_legend=True,
             vertical_layout=False,
-            fig_height_per_pair=6,
-            fig_width=20,
-            color_labels_by_annotation=True,
-            barplot_palette='Set1'
+            sort_by_category=True,
+            category_agg_method='sum',
+            color_labels_by_annotation=True
         )
         
         # Vertical layout with custom hex colors
@@ -96,10 +98,9 @@ def plotLigandReceptorInteraction(
             heatmap_cmap_receptor='Reds',
             shared_legend=True,
             vertical_layout=True,
-            fig_height_per_pair=10,
-            fig_width=10,
-            color_labels_by_annotation=True,
-            barplot_palette=['#F198CC', '#D6DAB9', '#BC938B', '#93DCFC', '#F4DBCD', '#bcf60c']
+            barplot_palette=['#F198CC', '#D6DAB9', '#BC938B', '#93DCFC', '#F4DBCD', '#bcf60c'],
+            sort_by_category=True,
+            category_agg_method='mean'
         )
         
     Raises:
@@ -172,6 +173,12 @@ def plotLigandReceptorInteraction(
                 raise ValueError(f"Invalid hex color at index {i}: '{color}'. Expected format: '#RRGGBB'")
     elif not isinstance(barplot_palette, str):
         raise ValueError("barplot_palette must be either a string (seaborn palette name) or a list of hex colors")
+    
+    # Check category sorting parameters
+    if not isinstance(sort_by_category, bool):
+        raise ValueError("sort_by_category must be a boolean")
+    if category_agg_method not in ['sum', 'mean']:
+        raise ValueError("category_agg_method must be either 'sum' or 'mean'")
     
     # Warn if no interactions will be plotted
     total_valid_interactions = 0
@@ -249,6 +256,24 @@ def plotLigandReceptorInteraction(
         valid_mask = (filtered_interactions[col_ligand].isin(specificity_df.index)) & (filtered_interactions[col_receptor].isin(specificity_df.index))
         filtered_interactions = filtered_interactions[valid_mask]
         if filtered_interactions.empty: continue
+        
+        # CHANGE: Apply category sorting if requested
+        if sort_by_category:
+            # Calculate category aggregated scores
+            category_scores = filtered_interactions.groupby(col_annotation)[col_interaction_score].agg(category_agg_method).sort_values(ascending=False)
+            
+            # Create a custom sort key for each interaction
+            category_rank = {cat: i for i, cat in enumerate(category_scores.index)}
+            filtered_interactions['category_rank'] = filtered_interactions[col_annotation].map(category_rank)
+            
+            # Sort by category rank first, then by interaction score within category (descending)
+            filtered_interactions = filtered_interactions.sort_values(
+                ['category_rank', col_interaction_score], 
+                ascending=[True, False]
+            ).reset_index(drop=True)
+        else:
+            # Default: sort by interaction score only (already done by nlargest above)
+            pass
         
         if vertical_layout:
             filtered_interactions = filtered_interactions.iloc[::-1].reset_index(drop=True)
